@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Эмулятор командной строки Astra Linux</title>
+    <!-- Подключаем базовые стили xterm -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@4.19.0/css/xterm.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css" rel="stylesheet">
+    <style>
+        /* Сброс базовых стилей */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        /* Основные стили для страницы */
+        html, body {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            background: #1e1e1e; /* Тёмный фон */
+            color: #f0f0f0;
+        }
+
+        /* Шапка с формами и кнопками */
+        #controls {
+            display: flex;
+            align-items: center;
+            padding: 10px 20px;
+            background-color: #2f2f2f;
+            border-bottom: 1px solid #444;
+        }
+        #controls input {
+            margin-top: 10px;
+            margin-right: 10px;
+            padding: 3px 8px;
+            border: 1px solid #555;
+            border-radius: 4px;
+            background-color: #3a3a3a;
+            color: #f0f0f0;
+        }
+        #controls button {
+            margin-right: 10px;
+            padding: 17px 12px;
+            border: none;
+            border-radius: 4px;
+            background-color: #4285f4;
+            color: #fff;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        #controls button:hover {
+            background-color: #357ae8;
+        }
+
+        /* Основной контейнер под панелью */
+        .main-container {
+            display: none;
+            flex: 1;
+            flex-direction: column; /* Изменяем направление на колонку */
+        }
+
+        /* Левая панель (категории) */
+        #categories {
+            background-color: #2a2a2a;
+            padding: 20px;
+            overflow-y: auto;
+        }
+        #categories h3 {
+            margin-bottom: 20px;
+            font-size: 1.2rem;
+            font-weight: 500;
+            color: #ffffff;
+        }
+
+        /* Карточки для каждой категории */
+        .category {
+            background-color: #333;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            padding: 15px;
+            box-shadow: 0 2px 4px #00000055; /* лёгкая тень */
+        }
+
+        /*
+         * Заголовок категории с процентом
+         * flex и gap позволят поставить заголовок и процент в одну строку
+         */
+        .category-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 1rem;
+            margin: 0 0 10px;
+            padding-bottom: 5px;
+            border-bottom: 1px солид #444;
+        }
+        .category-header h4 {
+            margin: 0; 
+            font-weight: 500;
+        }
+        .category-percent {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #66bfff; /* Выделяем другим цветом */
+        }
+
+        /* Уроки внутри категории */
+        .lesson {
+            display: flex;
+            align-items: center;
+            padding: 8px;
+            margin-bottom: 6px;
+            border-radius: 4px;
+            transition: background-color 0.2s ease;
+            cursor: pointer;
+        }
+        .lesson:hover {
+            background-color: #3e3e3e;
+        }
+
+        /* Иконка статуса слева от названия урока */
+        .lesson-icon {
+            margin-right: 10px;
+            font-size: 1.2rem;
+            width: 24px; /* фиксируем ширину, чтобы иконка выравнивалась */
+            text-align: center;
+            position: relative;
+        }
+        /* Титул урока */
+        .lesson-title {
+            font-size: 0.95rem;
+        }
+
+        /* Разные состояния выполнения */
+        .completed .lesson-icon::before {
+            content: "✔";
+            color: #43a047;
+        }
+        .not-completed .lesson-icon::before {
+            content: "✖";
+            color: #e53935;
+        }
+
+        /* Подсказка (tooltip) при наведении на иконку */
+        .lesson-icon::after {
+            content: attr(data-hint); /* подтягиваем текст подсказки из data-hint */
+            position: absolute;
+            top: 50%;
+            left: 110%;
+            transform: translateY(-50%);
+            background-color: rgba(0,0,0,0.75);
+            color: #fff;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+        }
+        .lesson-icon:hover::after {
+            opacity: 1;
+        }
+
+        /* Контейнер для терминала (правая часть) */
+        #terminal-container {
+            display: none; /* Скрываем терминал по умолчанию */
+        }
+        /* Стили для xterm.js */
+        .xterm {
+            font-family: "Courier New", "Consolas", monospace;
+            font-size: 14px;
+        }
+
+        /* Подсказка (hint) */
+        #hint {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            padding: 10px 15px;
+            background-color: #34b5e4;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            color: white;
+            display: none; /* изначально скрыто */
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+
+        /* Стили для контейнера урока */
+        #lesson-container {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            padding: 20px;
+            background-color: #1e1e1e;
+            color: #f0f0f0;
+            display: none;
+        }
+        #lesson-title {
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+        }
+        #lesson-description {
+            font-size: 1rem;
+            margin-bottom: 20px;
+        }
+        #lesson-back {
+            font-size: 1rem;
+            cursor: pointer;
+            color: #66bfff;
+        }
+        #lesson-hints {
+            background-color: #333;
+            padding: 10px;
+            border-radius: 10px;
+        }
+        .lesson-block {
+            display: flex;
+            gap: 20px;
+        }
+        .lesson-info {
+            width: 100%;
+            background-color: #2a2a2a;
+            margin-bottom: 20px;
+            border-radius: 10px;
+            padding: 20px;
+        }
+        #lesson-stages {
+            display: grid;
+            gap: 10px;
+            margin-bottom: 20px;
+            white-space: nowrap;
+        }
+        .stage {
+            display: flex;
+            align-items: center;
+            padding: 5px 10px;
+            background-color: #333;
+            border-radius: 12px;
+            cursor: pointer;
+        }
+        .stage-name {
+            font-size: 1rem;
+            margin-right: 10px;
+        }
+        .stage-status {
+            font-size: 1.2rem;
+        }
+        .lesson-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        #lesson-clear {
+            background-color: #333;
+            color: #fff;
+            padding: 8px 12px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        #lesson-clear:hover {
+            background-color: #444;
+        }
+
+        .header {
+            background-color: #2f2f2f;
+            padding: 10px 20px;
+            border-bottom: 1px solid #444;
+            gap: 12px;
+            justify-content: right;
+            align-items: center;
+
+            display: none;
+        }
+
+        #user-name {
+            font-size: 18px;
+            color: #fff;
+        }
+
+        #header-button {
+            background-color: #4285f4;
+            color: #fff;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        #login-container {
+            width: 100%;
+            height: 100%;
+
+        }
+
+        #login-form {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100%;
+            background-color: #2f2f2f;
+            padding: 20px;
+        }
+
+        #register {
+            background-color: #4285f4;
+            color: #fff;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        #login {
+            background-color: #4285f4;
+            color: #fff;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        #username {
+            margin-bottom: 10px;
+            padding: 3px 8px;
+            border: 1px solid #555;
+            border-radius: 4px;
+            background-color: #3a3a3a;
+            color: #f0f0f0;
+            width: 300px;
+        }
+        
+        #password {
+            margin-bottom: 10px;
+            padding: 3px 8px;
+            border: 1px solid #555;
+            border-radius: 4px;
+            background-color: #3a3a3a;
+            color: #f0f0f0;
+            width: 300px;
+        }
+
+        .login-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="login-container">
+        <div id="login-form">
+            <h2>Вход в систему</h2>
+            <input id="username" type="text" placeholder="Имя пользователя">
+            <input id="password" type="password" placeholder="Пароль">
+            <div class="login-buttons">
+                <div id="register">Регистрация</div>
+                <div id="login">Вход</div>
+            </div>
+        </div>
+    </div>
+    <!-- Шапка: ввод логина, пароля, кнопки -->
+    <!-- <div id="controls">
+        <input id="username" type="text" placeholder="Имя пользователя">
+        <input id="password" type="password" placeholder="Пароль">
+        <button id="register">Регистрация</button>
+        <button id="login">Вход</button>
+    </div> -->
+    <div class="header">
+        <div id="user-name">
+            
+        </div>
+        <div id="header-button">
+            Выйти
+        </div>
+    </div>
+
+    <!-- Основная часть: слева категории, справа терминал -->
+    <div class="main-container">
+        <div id="categories">
+            <h3>Категории уроков</h3>
+
+            <!-- Базовый уровень -->
+            <div id="basic-category" class="category">
+                <div class="category-header">
+                    <h4>Базовый уровень</h4>
+                    <!-- Процент выполнения (изначально 0%, JS пересчитает) -->
+                    <span class="category-percent">0%</span>
+                </div>
+                <div id="basic-lessons">
+                    <div class="lesson not-completed">
+                        <div class="lesson-icon" data-hint="Не выполнено"></div>
+                        <div class="lesson-title">Урок 1</div>
+                    </div>
+                    <div class="lesson completed">
+                        <div class="lesson-icon" data-hint="Выполнено"></div>
+                        <div class="lesson-title">Урок 2</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Средний уровень -->
+            <div id="intermediate-category" class="category">
+                <div class="category-header">
+                    <h4>Средний уровень</h4>
+                    <span class="category-percent">0%</span>
+                </div>
+                <div id="intermediate-lessons">
+                    <div class="lesson completed">
+                        <div class="lesson-icon" data-hint="Выполнено"></div>
+                        <div class="lesson-title">Урок 1</div>
+                    </div>
+                    <div class="lesson not-completed">
+                        <div class="lesson-icon" data-hint="Не выполнено"></div>
+                        <div class="lesson-title">Урок 2</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Продвинутый уровень -->
+            <div id="advanced-category" class="category">
+                <div class="category-header">
+                    <h4>Продвинутый уровень</h4>
+                    <span class="category-percent">0%</span>
+                </div>
+                <div id="advanced-lessons">
+                    <div class="lesson not-completed">
+                        <div class="lesson-icon" data-hint="Не выполнено"></div>
+                        <div class="lesson-title">Урок 1</div>
+                    </div>
+                    <div class="lesson not-completed">
+                        <div class="lesson-icon" data-hint="Не выполнено"></div>
+                        <div class="lesson-title">Урок 2</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="lesson-container">
+            <div class="lesson-header">
+                <div id="lesson-back">← Назад</div>
+                <div id="lesson-clear">Сброс урока</div>
+            </div>
+            <div class="lesson-block">
+                <div id="lesson-stages">
+                    <div class="stage">
+                        <div class="stage-name">Этап 1</div>
+                        <div class="stage-status">✖</div>
+                        <!-- <div class="stage-status">✔</div> -->
+                    </div>
+                </div>
+                <div class="lesson-info">
+                    <div id="lesson-title"></div>
+                    <div id="lesson-description"></div>
+                    <div id="lesson-hints"></div>
+                </div>
+            </div>
+            <div id="terminal-container"></div>
+        </div>
+
+        <!-- Подсказка (может отображаться по логике вашего кода) -->
+        <div id="hint">Подсказка</div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+    <!-- Скрипты xterm и socket.io -->
+    <script src="https://cdn.jsdelivr.net/npm/xterm@4.19.0/lib/xterm.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <!-- Ваш основной скрипт -->
+    <script src="script.js"></script>
+</body>
+</html>
