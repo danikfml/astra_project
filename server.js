@@ -13,11 +13,46 @@ const SECRET_KEY = 'supersecretkey';
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(bodyParser.json());
 
+//Сделать запрос к апи для получения файла со всеми данными в формате json
+// [
+//     {"user": "User1", "lesson": "Lesson1", "completed": True},
+//     {"user": "User1", "lesson": "Lesson2", "completed": False},
+//     {"user": "User2", "lesson": "Lesson1", "completed": True},
+//     {"user": "User2", "lesson": "Lesson2", "completed": False},
+//     {"user": "User2", "lesson": "Lesson3", "completed": False},
+// ]
+app.get('/admin', (req, res) => {
+    let Authorization = req.headers['authorization'];
+    const token = Authorization && Authorization.split(' ')[1];
+    if (!Authorization) return res.status(401).json({ message: 'Unauthorized1' });
+    if (!token) return res.status(401).json({ message: 'Unauthorized2' });
+    jwt.verify(token, SECRET_KEY, (err, decoded) => {
+        if (err) return res.status(401).json({ message: 'Unauthorized3' });
+        db.get(`SELECT * FROM users WHERE id = ?`, [decoded.userId], (err, user) => {
+            if (err || !user || !user.admin) return res.status(403).json({ message: 'Forbidden' });
+            else {
+                db.all(`SELECT u_l.*, u.username, l.title, u_l.completed
+                    FROM user_lessons u_l
+                    JOIN users u ON u.id = u_l.user_id
+                    JOIN lessons l ON l.id = u_l.lesson_id`, (err, rows) => {
+                    if (err) return res.status(500).json({ message: 'Internal server error' });
+                    const result = rows.map(row => ({
+                        user: row.username,
+                        lesson: row.title,
+                        completed: row.completed ? true : false
+                    }));
+                    res.json(result);
+                });
+            }
+        });
+    });
+});
+
 // Регистрация
 app.post('/register', async (req, res) => {
     const { username, password } = req.body;
     const hashedPassword = await bcrypt.hash(password, 10);
-    db.run(`INSERT INTO users (username, password) VALUES (?, ?)`, [username, hashedPassword], (err) => {
+    db.run(`INSERT INTO users (username, password, admin) VALUES (?, ?, false)`, [username, hashedPassword], (err) => {
         if (err) return res.status(400).json({ message: 'User already exists' });
         res.json({ message: 'Registration successful' });
     });
@@ -31,7 +66,7 @@ app.post('/login', (req, res) => {
         const validPassword = await bcrypt.compare(password, user.password);
         if (!validPassword) return res.status(400).json({ message: 'Invalid credentials' });
         const token = jwt.sign({ userId: user.id }, SECRET_KEY, { expiresIn: '1h' });
-        res.json({ token });
+        res.json({ token, admin: user.admin });
     });
 });
 
@@ -228,7 +263,6 @@ io.on('connection', (socket) => {
                             commands = [];
                             currentCommandIndex = 0;
                             socket.emit('lesson-completed', currentLesson);
-                            currentLesson = null;
                         }
                     }
                 );

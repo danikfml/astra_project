@@ -19,6 +19,9 @@ if (token) {
 
 // Аутентификация
 socket.on('authenticated', (success) => {
+    if (localStorage.getItem('admin') === '1') {
+        document.getElementById('header-button-admin').style.display = 'block';
+    }
     socket.emit('get-categories');
     if (success) {
         // terminal.writeln('\r\nВы успешно авторизованы.');
@@ -183,6 +186,36 @@ clearButton.addEventListener('click', () => {
     lastCommand = null;
     updateStages();
     socket.emit('clear-lesson', currentLesson.id);
+});
+
+let adminButton = document.getElementById('header-button-admin');
+adminButton.addEventListener('click', () => {
+    if (localStorage.getItem('admin') === '1') {
+        // /admin GET request with token in header authorization
+        fetch('/admin', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        })
+        .then(res => res.json())
+        .then(data => {
+            // Получаем данные с сервера и загружаем их пользователю в виде JSON файла
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            let filename = `admin_data_${new Date().toISOString().replace(/:/g, '-')}.json`;
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+    } else {
+        M.toast({html: 'У вас нет прав администратора'});
+        return;
+    }
 });
 
 // Выбор урока
@@ -451,6 +484,7 @@ loginButton.addEventListener('click', () => {
         .then(data => {
             if (data.token) {
                 localStorage.setItem('token', data.token);
+                localStorage.setItem('admin', data.admin);
                 socket.emit('authenticate', data.token);
                 M.toast({html: 'Вы успешно авторизованы'});
             } else {
